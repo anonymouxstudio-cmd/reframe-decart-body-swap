@@ -1,0 +1,110 @@
+# Anonymoux Livecast
+
+Realtime AI body swap over live video, built on Decart's **Lucy 2.5 Realtime**
+model via the official `@decartai/sdk`.
+
+## How it works
+
+- **Backend (`server.js`)** — a small Express server with exactly one job
+  related to Decart: mint short-lived client tokens using the SDK's
+  documented `client.tokens.create()` method, so your permanent
+  `DECART_API_KEY` never reaches the browser. It never proxies video —
+  WebRTC connects the browser directly to Decart's edge network once it has
+  a token.
+- **Frontend (`index.html`)** — a single-file vanilla JS console. It captures
+  your camera, requests a token from `/token`, connects to Lucy 2.5 with
+  `createDecartClient()` / `client.realtime.connect()`, and renders the
+  transformed stream. The Decart SDK is loaded straight from
+  [esm.sh](https://esm.sh) as a browser ES module — there's no bundler in
+  this project, so the SDK is imported directly via
+  `https://esm.sh/@decartai/sdk` rather than through `npm install` +
+  webpack/vite. If you later add a build step, swap that for a normal
+  `npm install @decartai/sdk` + bundler import.
+
+### About the token endpoint
+
+Decart's client-token endpoint is `POST https://api.decart.ai/v1/client/tokens`,
+authenticated with an `x-api-key` header. This is a **documented, official**
+Decart endpoint (see their [API reference](https://docs.platform.decart.ai/api-reference/create-client-token)) —
+the SDK's `tokens.create()` method calls it for you under the hood. This
+project never constructs that URL by hand; it always goes through the SDK.
+
+### Honest telemetry
+
+The console shows four live stats:
+
+- **Status** — from the SDK's documented `connectionChange` event.
+- **Frames Processed** / **Proc. Speed** — counted client-side from the
+  output `<video>` element using the browser's real
+  `requestVideoFrameCallback` API.
+- **Generation Time** — from the SDK's documented `generationTick` event
+  (`{ seconds }`).
+- **Latency** — the Decart SDK does not currently expose a per-frame latency
+  metric, so this is shown as `—` rather than a fabricated number. If Decart
+  adds this to the SDK later, wire it in here.
+
+### Pause / Resume / Reset
+
+The SDK doesn't expose dedicated pause/resume calls, so:
+
+- **Pause** disables the local camera's video track (`track.enabled = false`) —
+  Decart keeps rendering the last received frame.
+- **Resume** re-enables it.
+- **Reset** fully disconnects, stops the camera, and clears the reference
+  image and prompt back to defaults. You'll need to press **Start Camera**
+  and **Connect** again afterward.
+- **Reconnect** (shown only after an error) re-runs the full connect flow
+  with your current camera, prompt, and reference image.
+
+Switching cameras mid-session tears down and re-acquires `getUserMedia`,
+since the SDK's realtime connection is initialized with a single stream at
+connect time and there's no documented method to hot-swap the outgoing
+track.
+
+## Local development
+
+```bash
+npm install
+cp .env.example .env
+# edit .env and set DECART_API_KEY
+npm run dev
+```
+
+Open `http://localhost:10000`.
+
+## Deploying to Render
+
+1. Push this repo to GitHub.
+2. In Render, click **New → Blueprint** and point it at the repo — it will
+   pick up `render.yaml` automatically. Alternatively, create a **New → Web
+   Service** manually with:
+   - Build command: `npm install`
+   - Start command: `npm start`
+   - Health check path: `/health`
+3. Set the `DECART_API_KEY` environment variable in the Render dashboard
+   (this is marked `sync: false` in `render.yaml`, so Render will prompt you
+   for it rather than committing it to the repo).
+4. Deploy. Your app will be live at `https://<service-name>.onrender.com`.
+
+## Security notes
+
+- `DECART_API_KEY` is read only from `process.env` server-side and is never
+  sent to the browser — only short-lived tokens are.
+- Reference images are sent directly from the browser to the Decart SDK
+  session (`realtimeClient.set({ image })`); they are **not** uploaded to or
+  stored on this server.
+- Client-side validation caps uploads at 8MB and restricts to
+  JPG/PNG/WEBP. Enforce this again server-side if you later add your own
+  upload endpoint.
+- Set `ALLOWED_ORIGINS` in production to restrict which origins can call
+  `POST /token`.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `index.html` | Frontend console UI + Decart SDK integration |
+| `server.js` | Express backend, mints client tokens |
+| `package.json` | Dependencies and start script |
+| `.env.example` | Environment variable template |
+| `render.yaml` | Render deployment blueprint |
