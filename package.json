@@ -12,7 +12,7 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "@decartai/sdk": "^0.2.0",
+    "@decartai/sdk": "^0.1.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2"
