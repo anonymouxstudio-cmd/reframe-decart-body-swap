@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Anonymoux Livecast — Realtime Identity Console</title>
+<meta name="description" content="Realtime AI video transformation console, powered by Decart Lucy 2.5." />
+<link rel="icon" href="https://anonymouxstudio.free.nf/assets/img/logo-64.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* =====================================================================
+     Design tokens — one accent (calm blue) for actions, a single strict
+     red reserved only for ending/declining a live session.
+  ===================================================================== */
+  :root {
+    --bg: #0B0C0E;
+    --panel: #121317;
+    --panel-raised: #191B20;
+    --border: rgba(255,255,255,0.09);
+    --border-strong: rgba(255,255,255,0.18);
+    --text: #F3F4F6;
+    --text-dim: #9AA0AC;
+    --text-faint: #676C77;
+
+    --accent: #5B8CFF;
+    --accent-hover: #7AA2FF;
+    --accent-wash: rgba(91,140,255,0.12);
+
+    --danger: #FF4747;
+    --danger-hover: #FF6363;
+    --danger-wash: rgba(255,71,71,0.12);
+
+    --success: #34D399;
+    --warn: #FBBF24;
+
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    font-size: 16px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  a { color: var(--accent); }
+  button { font-family: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(11,12,14,0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand .logo-mark { height: 26px; width: 26px; object-fit: contain; flex-shrink: 0; border-radius: 6px; }
+  .brand .wordmark { display: flex; flex-direction: column; gap: 1px; line-height: 1.15; min-width: 0; }
+  .brand .name { font-weight: 600; font-size: 0.94rem; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand .sub { font-size: 0.72rem; color: var(--text-faint); white-space: nowrap; }
+  .model-chip {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 4px 9px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  /* ---------- Layout ---------- */
+  .console {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
+    gap: 16px;
+    padding: 16px 20px 24px;
+    max-width: 1320px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .console { grid-template-columns: 1fr; padding: 12px 12px calc(96px + var(--safe-bottom)); gap: 12px; }
+  }
+
+  /* ---------- Monitor ---------- */
+  .monitor {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-faint);
+    flex-shrink: 0;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+  }
+  .status-dot[data-state="connecting"], .status-dot[data-state="reconnecting"] {
+    background: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,0.18);
+    animation: dot-pulse 1s ease-in-out infinite;
+  }
+  .status-dot[data-state="connected"], .status-dot[data-state="generating"] {
+    background: var(--success); box-shadow: 0 0 0 3px rgba(52,211,153,0.18);
+  }
+  .status-dot[data-state="error"] {
+    background: var(--danger); box-shadow: 0 0 0 3px rgba(255,71,71,0.18);
+  }
+  @keyframes dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+  @media (prefers-reduced-motion: reduce) { .status-dot { animation: none !important; } }
+
+  .status-label { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-dim); }
+  .status-label .word { color: var(--text); font-weight: 600; }
+
+  .video-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: #08090B;
+  }
+  @media (max-width: 900px) {
+    .video-frame { aspect-ratio: 4 / 5; }
+  }
+  .video-frame video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #08090B;
+  }
+
+  .video-frame .placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px;
+    color: var(--text-faint);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 24px;
+  }
+  .video-frame .placeholder .big { color: var(--text-dim); font-weight: 500; font-size: 0.9rem; }
+
+  .video-frame .loading-overlay {
+    position: absolute; top: 12px; left: 12px;
+    display: none;
+    align-items: center; gap: 8px;
+    background: rgba(15,16,19,0.82);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 6px 12px 6px 8px;
+    z-index: 5;
+    backdrop-filter: blur(6px);
+  }
+  .video-frame .loading-overlay.active { display: inline-flex; }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay .msg { font-size: 0.72rem; color: var(--text-dim); }
+
+  /* Small always-visible live badge instead of a permanent watermark */
+  .live-badge {
+    position: absolute; top: 12px; right: 12px;
+    display: none;
+    align-items: center; gap: 6px;
+    background: rgba(15,16,19,0.82);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 5px 10px 5px 8px;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    z-index: 5;
+    backdrop-filter: blur(6px);
+  }
+  .live-badge.active { display: inline-flex; }
+  .live-badge .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+
+  /* ---------- Telemetry ---------- */
+  .telemetry {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--border);
+  }
+  .telemetry .cell { padding: 10px 14px; border-left: 1px solid var(--border); }
+  .telemetry .cell:first-child { border-left: none; }
+  @media (max-width: 520px) {
+    .telemetry { grid-template-columns: repeat(2, 1fr); }
+    .telemetry .cell:nth-child(3) { border-left: none; }
+    .telemetry .cell:nth-child(n+3) { border-top: 1px solid var(--border); }
+  }
+  .telemetry .cell .k {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    display: block;
+    margin-bottom: 3px;
+  }
+  .telemetry .cell .v {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.98rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  /* ---------- Rail / modules ---------- */
+  .rail { display: flex; flex-direction: column; gap: 12px; }
+  .module {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .module-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .module-head .title { font-weight: 600; font-size: 0.86rem; }
+  .module-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  label.field-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.66rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  select, textarea {
+    width: 100%;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    padding: 9px 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.88rem;
+  }
+  textarea { resize: vertical; min-height: 68px; line-height: 1.4; }
+  select:focus, textarea:focus { border-color: var(--accent); outline: none; }
+
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1 1 0; min-width: 0; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    font-weight: 600;
+    font-size: 0.84rem;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--panel-raised);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 44px;
+    transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease, transform 0.05s ease;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--border-strong); }
+  .btn:active:not(:disabled) { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #05070F;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+  .btn-icon { flex: 0 0 auto; width: 44px; padding: 0; }
+
+  /* Danger / decline — reserved exclusively for ending a live session */
+  .btn-danger {
+    background: var(--danger-wash);
+    border-color: rgba(255,71,71,0.4);
+    color: #FFD3D3;
+  }
+  .btn-danger:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: #1A0000; }
+
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn-row .btn { flex: 1 1 auto; }
+
+  /* ---------- Reference dropzone ---------- */
+  .dropzone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 16px 12px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    transition: border-color 0.15s ease, background 0.15s ease;
+    position: relative;
+  }
+  .dropzone .hint2 { display: block; margin-top: 3px; font-size: 0.7rem; color: var(--text-faint); }
+  .dropzone.dragover { border-color: var(--accent); background: var(--accent-wash); color: var(--text); }
+  .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  .ref-preview {
+    display: none; align-items: center; gap: 10px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px;
+  }
+  .ref-preview.active { display: flex; }
+  .ref-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+  .ref-preview .meta { flex: 1; min-width: 0; }
+  .ref-preview .meta .name { font-size: 0.78rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ref-preview .meta .size { font-family: 'IBM Plex Mono', monospace; font-size: 0.67rem; color: var(--text-dim); }
+  .ref-preview .clear-btn {
+    background: none; border: none; color: var(--text-dim); cursor: pointer;
+    font-size: 1rem; line-height: 1; padding: 6px; border-radius: 6px;
+  }
+  .ref-preview .clear-btn:hover { color: var(--danger); background: var(--danger-wash); }
+
+  .hint { font-size: 0.72rem; color: var(--text-faint); line-height: 1.4; }
+
+  .consent-note {
+    font-size: 0.72rem; line-height: 1.45; color: var(--text-dim);
+    border-left: 2px solid var(--accent);
+    padding: 6px 0 6px 10px;
+  }
+
+  /* ---------- Transport (desktop: in rail · mobile: sticky bottom bar) ---------- */
+  .transport-inline .btn-row { margin-bottom: 8px; }
+  .transport-inline .btn-row:last-child { margin-bottom: 0; }
+
+  .mobile-transport { display: none; }
+
+  @media (max-width: 900px) {
+    .transport-module { display: none; } /* replaced by sticky bar on mobile */
+
+    .mobile-transport {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      padding: 10px 12px calc(10px + var(--safe-bottom));
+      background: rgba(11,12,14,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      z-index: 40;
+    }
+    .mobile-transport .btn { min-height: 48px; }
+    .mobile-transport .btn-connect { flex: 1 1 auto; }
+    .mobile-transport .btn-end { flex: 0 0 auto; width: 52px; }
+  }
+
+  /* ---------- Toasts ---------- */
+  .toast-stack {
+    position: fixed;
+    bottom: 18px; right: 18px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 100; max-width: 320px;
+  }
+  @media (max-width: 900px) {
+    .toast-stack { left: 12px; right: 12px; bottom: calc(96px + var(--safe-bottom)); max-width: none; }
+  }
+  .toast {
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    color: var(--text);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    animation: toast-in 0.2s ease;
+  }
+  .toast.error { border-left-color: var(--danger); }
+  .toast.success { border-left-color: var(--success); }
+  .toast.warn { border-left-color: var(--warn); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  footer {
+    text-align: center;
+    padding: 18px;
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    border-top: 1px solid var(--border);
+  }
+  @media (max-width: 900px) { footer { padding-bottom: calc(96px + var(--safe-bottom)); } }
+  footer .accent { color: var(--text-dim); font-weight: 500; }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <img class="logo-mark" src="https://anonymouxstudio.free.nf/assets/img/logo-64.png" alt="Anonymoux logo" />
+      <div class="wordmark">
+        <span class="name">Anonymoux Livecast</span>
+        <span class="sub">Realtime Identity Console</span>
+      </div>
+    </div>
+    <span class="model-chip mono" id="model-chip">lucy-2.5</span>
+  </div>
+
+  <main class="console">
+    <!-- ============ MONITOR ============ -->
+    <section class="monitor">
+      <div class="status-bar">
+        <div class="status-label">
+          <span class="status-dot" id="status-dot" data-state="idle"></span>
+          <span class="word mono" id="status-word">Standby</span>
+        </div>
+      </div>
+      <div class="video-frame">
+        <video id="output-video" autoplay playsinline muted></video>
+        <video id="local-video" autoplay playsinline muted style="display:none;"></video>
+        <div class="placeholder" id="video-placeholder">
+          <span class="big">No signal</span>
+          Start a camera and connect to see the transformed stream here.
+        </div>
+        <div class="loading-overlay" id="loading-overlay">
+          <div class="spinner"></div>
+          <div class="msg" id="loading-msg">Connecting…</div>
+        </div>
+        <div class="live-badge" id="live-badge"><span class="pip"></span>Live</div>
+      </div>
+      <div class="telemetry">
+        <div class="cell"><span class="k">Status</span><span class="v" id="tel-status">Standby</span></div>
+        <div class="cell"><span class="k">Latency</span><span class="v" id="tel-latency" title="Not exposed by the Decart SDK.">—</span></div>
+        <div class="cell"><span class="k">Frames</span><span class="v" id="tel-frames">0</span></div>
+        <div class="cell"><span class="k">Gen. time</span><span class="v" id="tel-gen">0.0s</span></div>
+      </div>
+    </section>
+
+    <!-- ============ RAIL ============ -->
+    <section class="rail">
+
+      <!-- SOURCE -->
+      <div class="module">
+        <div class="module-head"><span class="title">Source</span></div>
+        <div class="module-body">
+          <label class="field-label" for="camera-select">Camera</label>
+          <div class="row">
+            <select id="camera-select">
+              <option value="">Default camera</option>
+            </select>
+            <button class="btn btn-icon" id="btn-refresh-cameras" title="Refresh camera list" aria-label="Refresh camera list">↻</button>
+            <button class="btn btn-icon" id="btn-flip-camera" title="Flip camera" aria-label="Flip camera">⟲</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="btn-start-camera">Start camera</button>
+          </div>
+          <span class="hint">Audio is never captured. Using a phone as a webcam (DroidCam, Iriun, EpocCam, Camo)? Start the app on your phone, then tap refresh.</span>
+        </div>
+      </div>
+
+      <!-- REFERENCE -->
+      <div class="module">
+        <div class="module-head"><span class="title">Reference identity</span></div>
+        <div class="module-body">
+          <label class="dropzone" id="dropzone" for="ref-file-input">
+            <span id="dropzone-text">Drop an image, or tap to browse<span class="hint2">JPG · PNG · WEBP, up to 8MB</span></span>
+            <input type="file" id="ref-file-input" accept="image/jpeg,image/png,image/webp" />
+          </label>
+          <div class="ref-preview" id="ref-preview">
+            <img id="ref-preview-img" alt="Reference preview" />
+            <div class="meta">
+              <div class="name" id="ref-preview-name"></div>
+              <div class="size" id="ref-preview-size"></div>
+            </div>
+            <button class="clear-btn" id="ref-clear-btn" title="Remove reference image">✕</button>
+          </div>
+          <span class="hint">Changing this mid-session updates the swap without reconnecting.</span>
+          <span class="consent-note">Only use a real person's likeness with their documented consent, or an original / fictional identity. Live outputs should carry on-screen disclosure per platform policy.</span>
+        </div>
+      </div>
+
+      <!-- DIRECTION -->
+      <div class="module">
+        <div class="module-head"><span class="title">Direction</span></div>
+        <div class="module-body">
+          <label class="field-label" for="prompt-input">Prompt</label>
+          <textarea id="prompt-input">Substitute the character in the video with the person in the reference image.</textarea>
+          <div class="btn-row">
+            <button class="btn" id="btn-apply-direction">Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRANSPORT (desktop) -->
+      <div class="module transport-module">
+        <div class="module-head"><span class="title">Transport</span></div>
+        <div class="module-body transport-inline">
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-connect">Connect</button>
+            <button class="btn btn-icon" id="btn-pause-toggle" disabled title="Pause" aria-label="Pause">⏸</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-danger" id="btn-end-session" disabled>● End session</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="btn-reconnect" style="display:none;">Reconnect</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <footer><span class="accent">Anonymoux Livecast</span> — built on Decart Lucy 2.5 Realtime via the official @decartai/sdk.</footer>
+
+  <!-- TRANSPORT (mobile sticky bar) -->
+  <div class="mobile-transport">
+    <button class="btn btn-icon" id="btn-pause-toggle-m" disabled title="Pause" aria-label="Pause">⏸</button>
+    <button class="btn btn-primary btn-connect" id="btn-connect-m">Connect</button>
+    <button class="btn btn-danger btn-end" id="btn-end-session-m" disabled title="End session" aria-label="End session">●</button>
+  </div>
+
+  <div class="toast-stack" id="toast-stack"></div>
+
+  <script type="module">
+    import { createDecartClient, models } from "https://esm.sh/@decartai/sdk";
+
+    // ---------------------------------------------------------------------
+    // Constants & element references
+    // ---------------------------------------------------------------------
+    const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+    const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+    const DEFAULT_PROMPT = "Substitute the character in the video with the person in the reference image.";
+
+    const el = {
+      statusDot: document.getElementById('status-dot'),
+      statusWord: document.getElementById('status-word'),
+      outputVideo: document.getElementById('output-video'),
+      localVideo: document.getElementById('local-video'),
+      placeholder: document.getElementById('video-placeholder'),
+      loadingOverlay: document.getElementById('loading-overlay'),
+      loadingMsg: document.getElementById('loading-msg'),
+      liveBadge: document.getElementById('live-badge'),
+
+      telStatus: document.getElementById('tel-status'),
+      telLatency: document.getElementById('tel-latency'),
+      telFrames: document.getElementById('tel-frames'),
+      telGen: document.getElementById('tel-gen'),
+
+      cameraSelect: document.getElementById('camera-select'),
+      btnStartCamera: document.getElementById('btn-start-camera'),
+      btnRefreshCameras: document.getElementById('btn-refresh-cameras'),
+      btnFlipCamera: document.getElementById('btn-flip-camera'),
+
+      dropzone: document.getElementById('dropzone'),
+      dropzoneText: document.getElementById('dropzone-text'),
+      refFileInput: document.getElementById('ref-file-input'),
+      refPreview: document.getElementById('ref-preview'),
+      refPreviewImg: document.getElementById('ref-preview-img'),
+      refPreviewName: document.getElementById('ref-preview-name'),
+      refPreviewSize: document.getElementById('ref-preview-size'),
+      refClearBtn: document.getElementById('ref-clear-btn'),
+
+      promptInput: document.getElementById('prompt-input'),
+      btnApplyDirection: document.getElementById('btn-apply-direction'),
+
+      btnConnect: document.getElementById('btn-connect'),
+      btnConnectM: document.getElementById('btn-connect-m'),
+      btnPauseToggle: document.getElementById('btn-pause-toggle'),
+      btnPauseToggleM: document.getElementById('btn-pause-toggle-m'),
+      btnEndSession: document.getElementById('btn-end-session'),
+      btnEndSessionM: document.getElementById('btn-end-session-m'),
+      btnReconnect: document.getElementById('btn-reconnect'),
+
+      toastStack: document.getElementById('toast-stack'),
+    };
+
+    const state = {
+      localStream: null,
+      realtimeClient: null,
+      referenceFile: null,
+      isPaused: false,
+      facingMode: 'user',
+      frameCount: 0,
+      connectionState: 'idle', // idle | connecting | connected | generating | reconnecting | disconnected | error
+      frameCallbackHandle: null,
+      wakeLock: null,
+    };
+
+    // ---------------------------------------------------------------------
+    // Toasts
+    // ---------------------------------------------------------------------
+    function toast(message, kind = 'info') {
+      const t = document.createElement('div');
+      t.className = `toast ${kind}`;
+      t.textContent = message;
+      el.toastStack.appendChild(t);
+      setTimeout(() => {
+        t.style.opacity = '0';
+        t.style.transition = 'opacity 0.2s ease';
+        setTimeout(() => t.remove(), 220);
+      }, 4200);
+    }
+
+    function logLifecycle(msg) {
+      console.log(`[Livecast] ${new Date().toISOString()} — ${msg}`);
+    }
+
+    // ---------------------------------------------------------------------
+    // Status / telemetry rendering
+    // ---------------------------------------------------------------------
+    function setConnectionState(newState) {
+      state.connectionState = newState;
+      el.statusDot.dataset.state = newState;
+
+      const labels = {
+        idle: 'Standby',
+        connecting: 'Connecting',
+        connected: 'On air',
+        generating: 'On air',
+        reconnecting: 'Reconnecting',
+        disconnected: 'Standby',
+        error: 'Error',
+      };
+      const label = labels[newState] || newState;
+      el.statusWord.textContent = label;
+      el.telStatus.textContent = label;
+
+      const isLive = newState === 'connected' || newState === 'generating';
+      const isBusy = newState === 'connecting' || newState === 'reconnecting';
+
+      [el.btnConnect, el.btnConnectM].forEach((b) => (b.disabled = isLive || isBusy));
+      [el.btnEndSession, el.btnEndSessionM].forEach((b) => (b.disabled = !isLive && newState !== 'reconnecting'));
+      [el.btnPauseToggle, el.btnPauseToggleM].forEach((b) => (b.disabled = !isLive));
+      el.btnReconnect.style.display = (newState === 'error') ? 'inline-flex' : 'none';
+
+      el.loadingOverlay.classList.toggle('active', isBusy);
+      if (isBusy) {
+        el.loadingMsg.textContent = newState === 'reconnecting' ? 'Reconnecting…' : 'Connecting…';
+      }
+
+      el.placeholder.style.display = (newState === 'idle' || newState === 'disconnected') ? 'flex' : 'none';
+      el.liveBadge.classList.toggle('active', isLive);
+    }
+
+    function setPauseUI() {
+      const label = state.isPaused ? '⏵' : '⏸';
+      const title = state.isPaused ? 'Resume' : 'Pause';
+      [el.btnPauseToggle, el.btnPauseToggleM].forEach((b) => {
+        b.textContent = label;
+        b.title = title;
+        b.setAttribute('aria-label', title);
+      });
+    }
+
+    // ---------------------------------------------------------------------
+    // Camera enumeration & selection
+    // ---------------------------------------------------------------------
+    async function populateCameraList() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((d) => d.kind === 'videoinput');
+        const previousValue = el.cameraSelect.value;
+        el.cameraSelect.innerHTML = '<option value="">Default camera</option>';
+        cams.forEach((cam, i) => {
+          const opt = document.createElement('option');
+          opt.value = cam.deviceId;
+          opt.textContent = cam.label || `Camera ${i + 1}`;
+          el.cameraSelect.appendChild(opt);
+        });
+        if (cams.some((c) => c.deviceId === previousValue)) {
+          el.cameraSelect.value = previousValue;
+        }
+      } catch (err) {
+        logLifecycle(`Could not enumerate cameras: ${err.message}`);
+      }
+    }
+
+    // Phone-as-webcam apps (DroidCam, Iriun, EpocCam, Camo…) often register
+    // their virtual camera device *after* the page has already loaded and
+    // asked for permission. Listen for device changes so the dropdown picks
+    // it up without requiring a page reload.
+    navigator.mediaDevices.addEventListener?.('devicechange', populateCameraList);
+
+    async function startCamera() {
+      try {
+        const model = models.realtime('lucy-2.5');
+        const deviceId = el.cameraSelect.value || undefined;
+
+        const constraints = {
+          audio: false,
+          video: {
+            frameRate: { ideal: model.fps, min: 15 },
+            width: { ideal: model.width, min: 480, max: 1920 },
+            height: { ideal: model.height, min: 360, max: 1080 },
+            facingMode: deviceId ? undefined : state.facingMode,
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+          },
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        if (state.localStream) {
+          state.localStream.getTracks().forEach((t) => t.stop());
+        }
+
+        state.localStream = stream;
+        el.localVideo.srcObject = stream;
+        await populateCameraList();
+        toast('Camera ready.', 'success');
+        logLifecycle('Camera started.');
+      } catch (err) {
+        console.error(err);
+        toast(`Camera permission or access failed: ${err.message}`, 'error');
+        logLifecycle(`Camera error: ${err.message}`);
+      }
+    }
+
+    function flipCamera() {
+      state.facingMode = state.facingMode === 'user' ? 'environment' : 'user';
+      el.cameraSelect.value = ''; // flipping uses facingMode, not a specific deviceId
+      if (state.localStream) {
+        startCamera();
+        if (state.connectionState === 'connected' || state.connectionState === 'generating') {
+          toast('Camera switched locally. Reconnect to apply it to the live session.', 'warn');
+        }
+      } else {
+        toast(`Will use the ${state.facingMode === 'user' ? 'front' : 'back'} camera.`, 'info');
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Reference image handling
+    // ---------------------------------------------------------------------
+    function validateReferenceFile(file) {
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast('Unsupported file type. Use JPG, PNG, or WEBP.', 'error');
+        return false;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        toast('Image exceeds the 8MB limit.', 'error');
+        return false;
+      }
+      return true;
+    }
+
+    async function setReferenceFile(file) {
+      if (!validateReferenceFile(file)) return;
+
+      state.referenceFile = file;
+      el.refPreviewImg.src = URL.createObjectURL(file);
+      el.refPreviewName.textContent = file.name;
+      el.refPreviewSize.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+      el.refPreview.classList.add('active');
+      el.dropzoneText.style.display = 'none';
+
+      if (state.realtimeClient && (state.connectionState === 'connected' || state.connectionState === 'generating')) {
+        try {
+          await state.realtimeClient.set({
+            prompt: el.promptInput.value.trim() || DEFAULT_PROMPT,
+            image: file,
+            enhance: true,
+          });
+          toast('Reference image updated live.', 'success');
+          logLifecycle('Reference image updated mid-session.');
+        } catch (err) {
+          toast(`Could not apply reference image: ${err.message}`, 'error');
+        }
+      } else {
+        toast('Reference image staged. It will apply once connected.', 'info');
+      }
+    }
+
+    function clearReferenceFile() {
+      state.referenceFile = null;
+      el.refPreview.classList.remove('active');
+      el.dropzoneText.style.display = 'block';
+      el.refFileInput.value = '';
+    }
+
+    // ---------------------------------------------------------------------
+    // Frame / fps telemetry via requestVideoFrameCallback (real browser API)
+    // ---------------------------------------------------------------------
+    function startFrameTelemetry() {
+      state.frameCount = 0;
+      if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+
+      const tick = (now, metadata) => {
+        state.frameCount += 1;
+        el.telFrames.textContent = state.frameCount.toLocaleString();
+        state.frameCallbackHandle = el.outputVideo.requestVideoFrameCallback(tick);
+      };
+      state.frameCallbackHandle = el.outputVideo.requestVideoFrameCallback(tick);
+    }
+
+    function stopFrameTelemetry() {
+      if (state.frameCallbackHandle && el.outputVideo.cancelVideoFrameCallback) {
+        el.outputVideo.cancelVideoFrameCallback(state.frameCallbackHandle);
+      }
+      state.frameCallbackHandle = null;
+    }
+
+    // ---------------------------------------------------------------------
+    // Screen wake lock — keeps the display on for a live session on mobile.
+    // ---------------------------------------------------------------------
+    async function acquireWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          state.wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        logLifecycle(`Wake lock not acquired: ${err.message}`);
+      }
+    }
+    function releaseWakeLock() {
+      if (state.wakeLock) {
+        state.wakeLock.release().catch(() => {});
+        state.wakeLock = null;
+      }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' &&
+          (state.connectionState === 'connected' || state.connectionState === 'generating') &&
+          !state.wakeLock) {
+        acquireWakeLock();
+      }
+    });
+
+    // ---------------------------------------------------------------------
+    // Token fetch (server-side mint via official SDK — see server.js)
+    // ---------------------------------------------------------------------
+    async function fetchClientToken() {
+      const res = await fetch('/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'lucy-2.5' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok || !data.apiKey) {
+        throw new Error(data.message || 'Failed to obtain a client token from the server.');
+      }
+      return data;
+    }
+
+    // ---------------------------------------------------------------------
+    // Connect / End session / Pause-Resume
+    // ---------------------------------------------------------------------
+    async function connectSession() {
+      if (!state.localStream) {
+        toast('Start a camera first.', 'warn');
+        return;
+      }
+
+      setConnectionState('connecting');
+      logLifecycle('Requesting client token…');
+
+      try {
+        const token = await fetchClientToken();
+        logLifecycle('Client token acquired.');
+
+        const model = models.realtime('lucy-2.5');
+        const client = createDecartClient({ apiKey: token.apiKey });
+
+        const initialPrompt = el.promptInput.value.trim() || DEFAULT_PROMPT;
+
+        const realtimeClient = await client.realtime.connect(state.localStream, {
+          model,
+          mirror: 'auto',
+          onRemoteStream: (transformedStream) => {
+            el.outputVideo.srcObject = transformedStream;
+            startFrameTelemetry();
+          },
+          initialState: {
+            prompt: { text: initialPrompt, enhance: true },
+            ...(state.referenceFile ? { image: state.referenceFile } : {}),
+          },
+        });
+
+        state.realtimeClient = realtimeClient;
+
+        realtimeClient.on('connectionChange', (connState) => {
+          logLifecycle(`Connection state → ${connState}`);
+          setConnectionState(connState);
+          if (connState === 'connected' || connState === 'generating') {
+            toast('Session live.', 'success');
+            acquireWakeLock();
+          }
+          if (connState === 'disconnected') {
+            stopFrameTelemetry();
+            releaseWakeLock();
+          }
+        });
+
+        realtimeClient.on('generationTick', ({ seconds }) => {
+          el.telGen.textContent = `${seconds.toFixed(1)}s`;
+        });
+
+        realtimeClient.on('error', (error) => {
+          console.error('[Decart] error:', error.code, error.message);
+          toast(`Decart error: ${error.message}`, 'error');
+          setConnectionState('error');
+        });
+      } catch (err) {
+        console.error(err);
+        toast(`Connection failed: ${err.message}`, 'error');
+        logLifecycle(`Connection failed: ${err.message}`);
+        setConnectionState('error');
+      }
+    }
+
+    // Single "decline" control: immediately tears down the realtime session,
+    // stops the camera, and returns the console to a clean idle state — the
+    // equivalent of hanging up a call. No confirmation dialog, by design,
+    // so it works as a fast panic/stop button.
+    function endSession() {
+      if (state.realtimeClient) {
+        try { state.realtimeClient.disconnect(); } catch (err) { console.warn('Error during disconnect:', err); }
+        state.realtimeClient = null;
+      }
+      stopFrameTelemetry();
+      releaseWakeLock();
+      el.outputVideo.srcObject = null;
+
+      if (state.localStream) {
+        state.localStream.getTracks().forEach((t) => t.stop());
+        state.localStream = null;
+      }
+      el.localVideo.srcObject = null;
+
+      state.isPaused = false;
+      setPauseUI();
+      setConnectionState('idle');
+      toast('Session ended.', 'info');
+      logLifecycle('Session ended — camera stopped, realtime session closed.');
+    }
+
+    function togglePause() {
+      if (!state.localStream) return;
+      state.isPaused = !state.isPaused;
+      state.localStream.getVideoTracks().forEach((t) => (t.enabled = !state.isPaused));
+      setPauseUI();
+      if (state.isPaused) {
+        toast('Camera feed paused. The last frame will hold until resumed.', 'warn');
+        logLifecycle('Paused local video track.');
+      } else {
+        toast('Camera feed resumed.', 'success');
+        logLifecycle('Resumed local video track.');
+      }
+    }
+
+    async function applyDirection() {
+      if (!state.realtimeClient) {
+        toast('Connect a session before applying direction.', 'warn');
+        return;
+      }
+      const prompt = el.promptInput.value.trim() || DEFAULT_PROMPT;
+      try {
+        await state.realtimeClient.set({
+          prompt,
+          ...(state.referenceFile ? { image: state.referenceFile } : {}),
+          enhance: true,
+        });
+        toast('Direction applied.', 'success');
+        logLifecycle(`Prompt updated: "${prompt}"`);
+      } catch (err) {
+        toast(`Could not apply direction: ${err.message}`, 'error');
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Drag & drop wiring
+    // ---------------------------------------------------------------------
+    ['dragenter', 'dragover'].forEach((evt) => {
+      el.dropzone.addEventListener(evt, (e) => { e.preventDefault(); el.dropzone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach((evt) => {
+      el.dropzone.addEventListener(evt, (e) => { e.preventDefault(); el.dropzone.classList.remove('dragover'); });
+    });
+    el.dropzone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files?.[0];
+      if (file) setReferenceFile(file);
+    });
+    el.refFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) setReferenceFile(file);
+    });
+    el.refClearBtn.addEventListener('click', clearReferenceFile);
+
+    // ---------------------------------------------------------------------
+    // Button wiring (desktop + mirrored mobile sticky bar)
+    // ---------------------------------------------------------------------
+    el.btnStartCamera.addEventListener('click', startCamera);
+    el.btnRefreshCameras.addEventListener('click', () => { populateCameraList(); toast('Camera list refreshed.', 'info'); });
+    el.btnFlipCamera.addEventListener('click', flipCamera);
+
+    [el.btnConnect, el.btnConnectM].forEach((b) => b.addEventListener('click', connectSession));
+    [el.btnEndSession, el.btnEndSessionM].forEach((b) => b.addEventListener('click', endSession));
+    [el.btnPauseToggle, el.btnPauseToggleM].forEach((b) => b.addEventListener('click', togglePause));
+
+    el.btnApplyDirection.addEventListener('click', applyDirection);
+    el.btnReconnect.addEventListener('click', connectSession);
+    el.cameraSelect.addEventListener('change', () => {
+      if (state.localStream) startCamera();
+    });
+
+    // ---------------------------------------------------------------------
+    // Cleanup on tab close
+    // ---------------------------------------------------------------------
+    window.addEventListener('beforeunload', () => {
+      if (state.realtimeClient) {
+        try { state.realtimeClient.disconnect(); } catch (_) {}
+      }
+      if (state.localStream) {
+        state.localStream.getTracks().forEach((t) => t.stop());
+      }
+      releaseWakeLock();
+    });
+
+    // ---------------------------------------------------------------------
+    // Boot
+    // ---------------------------------------------------------------------
+    (async function init() {
+      setConnectionState('idle');
+      setPauseUI();
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        probe.getTracks().forEach((t) => t.stop());
+        await populateCameraList();
+      } catch (err) {
+        logLifecycle(`Camera permission not yet granted: ${err.message}`);
+      }
+
+      try {
+        const health = await fetch('/health').then((r) => r.json());
+        if (!health.configured) {
+          toast('Server has no DECART_API_KEY configured yet.', 'warn');
+        }
+      } catch (_) {
+        toast('Could not reach the backend. Is the server running?', 'error');
+      }
+    })();
+  </script>
+</body>
+</html>
